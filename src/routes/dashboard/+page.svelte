@@ -11,6 +11,25 @@
 
 	let selectedAsset = $state<Asset | null>(null);
 
+	// Month selection state
+	let selectedDate = $state(new Date());
+
+	function formatMonthYear(date: Date) {
+		return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(date);
+	}
+
+	function previousMonth() {
+		const newDate = new Date(selectedDate);
+		newDate.setMonth(newDate.getMonth() - 1);
+		selectedDate = newDate;
+	}
+
+	function nextMonth() {
+		const newDate = new Date(selectedDate);
+		newDate.setMonth(newDate.getMonth() + 1);
+		selectedDate = newDate;
+	}
+
 	onMount(() => {
 		if ($assets.length === 0) {
 			const mockAssets = generateMockData();
@@ -19,72 +38,61 @@
 	});
 
 	let currency = $derived($auth?.preferredCurrency || 'EUR');
-	let showMaterial = $derived($auth?.showMaterialValues ?? false);
+	let showMaterial = $derived($auth?.showMaterialValues ?? true);
 
-	let visibleAssets = $derived(
-		$assets.filter((a) => {
-			if (!showMaterial && ['Watch', 'Car', 'PreciousMetal', 'Cash'].includes(a.type)) {
-				return false;
-			}
-			return true;
-		})
-	);
+	// Filter assets for the selected month/year
+	let visibleAssets = $derived.by(() => {
+		const month = selectedDate.getMonth();
+		const year = selectedDate.getFullYear();
+		return $assets.filter((a) => {
+			if (!a.date) return true; // include assets without a date
+			const d = new Date(a.date);
+			return d.getMonth() === month && d.getFullYear() === year;
+		});
+	});
 
-	let chartData = $derived({
-		labels: [
-			'ETF',
-			'Stock',
-			'Crypto',
-			'Bank',
-			'Saving',
-			'RealEstate',
-			'Watch',
-			'Car',
-			'PreciousMetal',
-			'Cash',
-			'Other'
-		].filter((type) => {
-			if (!showMaterial && ['Watch', 'Car', 'PreciousMetal', 'Cash'].includes(type)) return false;
-			return true;
-		}),
-		datasets: [
-			{
-				data: [
-					'ETF',
-					'Stock',
-					'Crypto',
-					'Bank',
-					'Saving',
-					'RealEstate',
-					'Watch',
-					'Car',
-					'PreciousMetal',
-					'Cash',
-					'Other'
-				]
-					.filter((type) => {
-						if (!showMaterial && ['Watch', 'Car', 'PreciousMetal', 'Cash'].includes(type))
-							return false;
-						return true;
-					})
-					.map((type) =>
-						visibleAssets.filter((a) => a.type === type).reduce((sum, a) => sum + a.value, 0)
-					),
-				backgroundColor: [
-					'#FF6384',
-					'#36A2EB',
-					'#F7931A', // Crypto
-					'#FFCE56',
-					'#4BC0C0',
-					'#9966FF',
-					'#C9CBCF', // Watch
-					'#FF9F40', // Car
-					'#E7E9ED', // Metal
-					'#4D5360', // Cash
-					'#7AC142' // Other
-				]
-			}
-		]
+	// Material asset types
+	const materialTypes = ['Watch', 'Car', 'PreciousMetal', 'Cash', 'Other'];
+
+	let chartData = $derived.by(() => {
+		const baseLabels = ['ETF', 'Stock', 'Crypto', 'Bank', 'Saving', 'Real Estate', 'P2P Lending'];
+		if (showMaterial) baseLabels.push('Material Values');
+		const data = [];
+		data.push(visibleAssets.filter((a) => a.type === 'ETF').reduce((s, a) => s + a.value, 0));
+		data.push(visibleAssets.filter((a) => a.type === 'Stock').reduce((s, a) => s + a.value, 0));
+		data.push(visibleAssets.filter((a) => a.type === 'Crypto').reduce((s, a) => s + a.value, 0));
+		data.push(visibleAssets.filter((a) => a.type === 'Bank').reduce((s, a) => s + a.value, 0));
+		data.push(visibleAssets.filter((a) => a.type === 'Saving').reduce((s, a) => s + a.value, 0));
+		data.push(
+			visibleAssets.filter((a) => a.type === 'RealEstate').reduce((s, a) => s + a.value, 0)
+		);
+		data.push(
+			visibleAssets.filter((a) => a.type === 'P2PLending').reduce((s, a) => s + a.value, 0)
+		);
+		if (showMaterial) {
+			const materialSum = visibleAssets
+				.filter((a) => materialTypes.includes(a.type))
+				.reduce((s, a) => s + a.value, 0);
+			data.push(materialSum);
+		}
+		return {
+			labels: baseLabels,
+			datasets: [
+				{
+					data,
+					backgroundColor: [
+						'#FF6384', // ETF
+						'#36A2EB', // Stock
+						'#F7931A', // Crypto
+						'#FFCE56', // Bank
+						'#4BC0C0', // Saving
+						'#9966FF', // Real Estate
+						'#FF9F40', // P2P Lending
+						...(showMaterial ? ['#C9CBCF'] : []) // Material Values
+					]
+				}
+			]
+		};
 	});
 
 	function formatMoney(value: number, curr: string) {
@@ -94,6 +102,18 @@
 
 <div class="dashboard">
 	<header>
+		<div class="month-selector">
+			<button class="month-nav" onclick={previousMonth} title="Previous Month">
+				<span class="material-symbols-outlined">chevron_left</span>
+			</button>
+			<div class="month-display">
+				{formatMonthYear(selectedDate)}
+			</div>
+			<button class="month-nav" onclick={nextMonth} title="Next Month">
+				<span class="material-symbols-outlined">chevron_right</span>
+			</button>
+		</div>
+
 		<h1>Total Wealth</h1>
 		<div class="total-wealth">
 			{formatMoney($totalWealth, currency)}
@@ -133,6 +153,40 @@
 	header {
 		text-align: center;
 		margin-bottom: 3rem;
+	}
+	.month-selector {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 1rem;
+		margin-bottom: 2rem;
+	}
+	.month-nav {
+		background: var(--surface-color);
+		border: 1px solid var(--border-color);
+		border-radius: 50%;
+		width: 40px;
+		height: 40px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+	.month-nav:hover {
+		background: var(--surface-hover);
+		border-color: var(--primary-color);
+	}
+	.month-nav .material-symbols-outlined {
+		font-size: 24px;
+		color: var(--text-primary);
+	}
+	.month-display {
+		font-size: 1.25rem;
+		font-weight: 600;
+		color: var(--primary-color);
+		min-width: 200px;
+		text-align: center;
 	}
 	h1 {
 		font-size: 1.5rem;

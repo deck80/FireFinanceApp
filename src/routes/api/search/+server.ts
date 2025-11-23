@@ -14,8 +14,11 @@ export const GET: RequestHandler = async ({ url }) => {
     try {
         const results = await yahooFinance.search(query) as any;
 
+        // Filter out invalid results (missing symbol)
+        const validQuotes = results.quotes.filter((q: any) => q.symbol);
+
         // Map Yahoo Finance results to our Asset format
-        const assets = await Promise.all(results.quotes.map(async (quote: any) => {
+        const assets = await Promise.all(validQuotes.map(async (quote: any) => {
             // Determine type based on quoteType
             let type = 'Stock'; // Default
             if (quote.quoteType === 'ETF') type = 'ETF';
@@ -26,7 +29,7 @@ export const GET: RequestHandler = async ({ url }) => {
             let name = quote.longName || quote.shortName;
 
             // If name is missing, try to fetch quote details (common for some ETFs like SML3.MU in search)
-            if (!name) {
+            if (!name && quote.symbol) {
                 try {
                     const fullQuote = await yahooFinance.quote(quote.symbol) as any;
                     name = fullQuote.longName || fullQuote.shortName;

@@ -68,9 +68,49 @@
 						title: {
 							display: !!title,
 							text: title
+						},
+						tooltip: {
+							callbacks: {
+								label: function (context: any) {
+									const label = context.label || '';
+									const value = context.parsed || 0;
+									const total = context.dataset.data.reduce((a: number, b: number) => a + b, 0);
+									const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
+									return `${label}: ${percentage}%`;
+								}
+							}
 						}
 					}
-				}
+				},
+				plugins: [
+					{
+						id: 'percentageLabels',
+						afterDatasetsDraw(chart: any) {
+							const ctx = chart.ctx;
+							chart.data.datasets.forEach((dataset: any, datasetIndex: number) => {
+								const meta = chart.getDatasetMeta(datasetIndex);
+								if (!meta.hidden) {
+									const total = dataset.data.reduce((a: number, b: number) => a + b, 0);
+									meta.data.forEach((element: any, index: number) => {
+										const value = dataset.data[index];
+										const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
+
+										// Only show percentage if it's greater than 3% to avoid clutter
+										if (parseFloat(percentage) > 3) {
+											ctx.fillStyle = '#fff';
+											ctx.font = 'bold 14px Arial';
+											ctx.textAlign = 'center';
+											ctx.textBaseline = 'middle';
+
+											const position = element.tooltipPosition();
+											ctx.fillText(`${percentage}%`, position.x, position.y);
+										}
+									});
+								}
+							});
+						}
+					}
+				]
 			};
 			chartInstance = new Chart(canvas, config);
 		}
